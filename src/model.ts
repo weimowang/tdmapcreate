@@ -22,7 +22,7 @@ export const adjacent = (a: Cell, b: Cell) => Math.abs(a.x - b.x) + Math.abs(a.y
 export const center = (p: Cell, g: Grid) => ({ x: (p.x + .5) * g.cellWidth, y: (p.y + .5) * g.cellHeight });
 export function blank(): MapData { return { schemaVersion: 1, name: '未命名地圖', grid: { columns: 18, rows: 10, cellWidth: 70, cellHeight: 70 }, routes: [{ id: 'route-1', name: '路線 1', cells: [] }], obstacles: [], art: { customDetail: '', roadColorSpecified: false, backgroundColorSpecified: false, customDescription: '', safeBorder: { enabled: false, top: 70, right: 70, bottom: 70, left: 70 }, roadColor: '#cbb899', backgroundColor: '#dce6d0', style: '', detail: '' } }; }
 export function clearedMap(m: MapData): MapData {
-  return { ...m, routes: [{ id: 'route-1', name: '路線 1', cells: [] }], obstacles: [], art: blank().art };
+  return { ...m, routes: [{ id: 'route-1', name: '路線 1', cells: [] }], obstacles: [] };
 }
 export function checkGrid(g: Grid) {
   for (const k of ['columns', 'rows', 'cellWidth', 'cellHeight'] as const) {

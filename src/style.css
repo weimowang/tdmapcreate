@@ -7,3 +7,5 @@ input[hidden]{display:none!important}
 .canvas-actions{display:flex;align-items:center;gap:12px;flex-shrink:0}.canvas-actions button{font-size:12px}
 .map,.cell{user-select:none;-webkit-user-select:none}.cell{ -webkit-user-drag:none }
 .clear-dialog{max-width:min(440px,calc(100vw - 32px));padding:24px;border:1px solid var(--line);border-radius:12px;background:#fffefa;color:inherit}.clear-dialog::backdrop{background:#283b3159}.clear-dialog p{margin:14px 0 22px;line-height:1.8}.clear-dialog>div{display:flex;justify-content:flex-end;gap:10px}
+
+.art-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.art-heading button{font-size:12px;padding:8px}.canvas-heading{flex-wrap:wrap}
