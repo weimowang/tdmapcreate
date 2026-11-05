@@ -41,6 +41,14 @@ export function append(m: MapData, routeId: string, p: Cell) {
   if (r.cells.length && !adjacent(r.cells.at(-1)!, p)) throw new Error('請點選路線尾端上下左右的相鄰格。');
   r.cells.push({ ...p });
 }
+/** Toggle a cell in the selected route: remove the clicked cell and its suffix. */
+export function editRoute(m: MapData, routeId: string, p: Cell): number {
+  const r = m.routes.find(r => r.id === routeId);
+  const index = r?.cells.findIndex(c => equal(c, p)) ?? -1;
+  if (r && index >= 0) return r.cells.splice(index).length;
+  append(m, routeId, p);
+  return 0;
+}
 export function place(m: MapData, p: Cell, kind: Obstacle['kind']) {
   if (!inside(p, m.grid)) throw new Error('座標超出地圖。');
   if (m.routes.some(r => r.cells.some(c => equal(c, p)))) throw new Error('道路格不能放置障礙物。');

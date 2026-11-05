@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import { append, blank, cellRef, columnLabel, center, details, equal, exported, imageSize, issues, key, mediums, parse, place, prompt, resized, styles, svg, type Cell, type Obstacle } from './model';
+import { editRoute, blank, cellRef, columnLabel, center, details, equal, exported, imageSize, issues, key, mediums, parse, place, prompt, resized, styles, svg, type Cell, type Obstacle } from './model';
 const storageKey = 'tdmapcreate.draft.v1';
 const map = ref(blank());
 const notice = ref('從地圖邊界點選第一格，開始設計你的路線。');
@@ -27,13 +27,13 @@ const roadKeys = computed(() => new Set(data.value.roadCells.map(key)));
 const obstacles = computed(() => new Map(map.value.obstacles.map(o => [key(o.cell), o.kind])));
 const cells = computed(() => Array.from({ length: map.value.grid.columns * map.value.grid.rows }, (_, i) => ({ x: i % map.value.grid.columns, y: Math.floor(i / map.value.grid.columns) })));
 const selectedKeys = computed(() => new Set(route.value?.cells.map(key) || []));
-const hint = computed(() => tool.value === 'route' ? '點選邊界作為入口，再逐格連接；最後一格是出口。' : tool.value === 'obstacle' ? '點選空地放置障礙物；道路格會受到保護。' : '點選障礙物即可擦除；道路請使用「退回一格」。');
+const hint = computed(() => tool.value === 'route' ? '從邊界開始逐格連接；再點已畫格子，會刪除該格及後面整段。' : tool.value === 'obstacle' ? '點選空地放置障礙物；道路格會受到保護。' : '點選障礙物即可擦除；道路請切換「畫路線」，再點要刪除的格子。');
 const symbols = { tree: '樹', rock: '石', building: '屋' };
 const palette = ['#456b59', '#966c7b', '#627d98', '#9b773c'];
 watch(map, () => { try { localStorage.setItem(storageKey, JSON.stringify(map.value)); saved.value = '已儲存於此瀏覽器'; } catch { saved.value = '本機保存不可用，請下載 JSON'; } }, { deep: true });
 function act(fn: () => void, message?: string) { try { fn(); if (message) notice.value = message; } catch (e) { notice.value = (e as Error).message; } }
 function paint(p: Cell) {
-  act(() => { if (tool.value === 'route') append(map.value, selected.value, p); else if (tool.value === 'obstacle') place(map.value, p, kind.value); else map.value.obstacles = map.value.obstacles.filter(o => !equal(o.cell, p)); notice.value = `已更新格子 ${cellRef(p)}（${p.x}, ${p.y}）。`; });
+  act(() => { if (tool.value === 'route') { const removed = editRoute(map.value, selected.value, p); if (removed) { notice.value = `已從 ${cellRef(p)} 刪除目前路線的 ${removed} 格（含點選格及後續路段）。`; return; } } else if (tool.value === 'obstacle') place(map.value, p, kind.value); else map.value.obstacles = map.value.obstacles.filter(o => !equal(o.cell, p)); notice.value = `已更新格子 ${cellRef(p)}（${p.x}, ${p.y}）。`; });
 }
 function applySize() { act(() => { map.value = resized(map.value, draftGrid.value); focusCell.value = 0; nextTick(fitMap); }, '尺寸已套用，地圖座標維持不變。'); }
 function addRoute() { if (map.value.routes.length >= 16) { notice.value = '最多支援 16 條路線。'; return; } let n = 1; while (map.value.routes.some(r => r.id === `route-${n}`)) n++; const r = { id: `route-${n}`, name: `路線 ${n}`, cells: [] }; map.value.routes.push(r); selected.value = r.id; tool.value = 'route'; }
