@@ -4,9 +4,9 @@ export type Route = { id: string; name: string; cells: Cell[] };
 export type Obstacle = { cell: Cell; kind: 'tree' | 'rock' | 'building' };
 export const styles = { 'japanese-cute': ['日系可愛', 'cute Japanese illustration'], fantasy: ['奇幻童話', 'whimsical fantasy'], natural: ['自然寫實', 'naturalistic environment'], minimal: ['極簡', 'minimalist'], 'american-comic': ['美式漫畫', 'American comic book with bold outlines and graphic shading'], 'hand-drawn': ['手繪', 'hand-drawn illustration with organic strokes'], ink: ['油墨', 'ink illustration with expressive ink textures'], 'pixel-art': ['像素', 'pixel art with crisp pixel edges'], storybook: ['童書繪本', 'storybook illustration'], 'retro-cartoon': ['復古卡通', 'retro cartoon illustration'], papercut: ['剪紙拼貼', 'layered paper-cut collage'], 'line-art': ['線稿', 'clean line-art illustration'], watercolor: ['水彩', 'watercolor illustration'], gouache: ['水粉', 'gouache illustration'], digital: ['數位繪畫', 'digital painting'], pencil: ['鉛筆素描', 'pencil drawing'], 'colored-pencil': ['色鉛筆', 'colored pencil illustration'], oil: ['油畫', 'oil painting'], marker: ['麥克筆', 'marker drawing'], print: ['版畫', 'printmaking'], custom: ['自訂風格', 'custom visual style described in the user notes below'] };
 const legacyMediums = { watercolor: ['水彩', 'watercolor'], gouache: ['水粉', 'gouache'], digital: ['數位繪畫', 'digital painting'], pixel: ['像素畫', 'pixel art'], ink: ['墨水', 'ink drawing'], pencil: ['鉛筆', 'pencil drawing'], 'colored-pencil': ['色鉛筆', 'colored pencil'], oil: ['油畫', 'oil painting'], marker: ['麥克筆', 'marker drawing'], print: ['版畫', 'printmaking'] };
-export const details = { 'color-blocks': ['色塊', 'clean color blocks'], balanced: ['適中', 'balanced detail'], fine: ['精緻', 'fine environmental detail'] };
+export const details = { 'color-blocks': ['色塊', 'clean color blocks'], balanced: ['適中', 'balanced detail'], fine: ['精緻', 'fine environmental detail'], custom: ['自訂', ''] };
 export type SafeBorder = { enabled: boolean; top: number; right: number; bottom: number; left: number };
-export type Art = { customDescription: string; safeBorder: SafeBorder; roadColor: string; backgroundColor: string; style: keyof typeof styles; detail: keyof typeof details };
+export type Art = { customDetail: string; roadColorSpecified: boolean; backgroundColorSpecified: boolean; customDescription: string; safeBorder: SafeBorder; roadColor: string; backgroundColor: string; style: keyof typeof styles | ''; detail: keyof typeof details | '' };
 export type MapData = { schemaVersion: 1; name: string; grid: Grid; routes: Route[]; obstacles: Obstacle[]; art: Art };
 export function columnLabel(index: number): string {
   let label = ''; for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) label = String.fromCharCode(65 + (n - 1) % 26) + label;
@@ -19,9 +19,9 @@ export const edge = (p: Cell, g: Grid) => p.x === 0 || p.y === 0 || p.x === g.co
 export const inside = (p: Cell, g: Grid) => p.x >= 0 && p.x < g.columns && p.y >= 0 && p.y < g.rows;
 export const adjacent = (a: Cell, b: Cell) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1;
 export const center = (p: Cell, g: Grid) => ({ x: (p.x + .5) * g.cellWidth, y: (p.y + .5) * g.cellHeight });
-export function blank(): MapData { return { schemaVersion: 1, name: '未命名地圖', grid: { columns: 18, rows: 10, cellWidth: 70, cellHeight: 70 }, routes: [{ id: 'route-1', name: '路線 1', cells: [] }], obstacles: [], art: { customDescription: '', safeBorder: { enabled: false, top: 70, right: 70, bottom: 70, left: 70 }, roadColor: '#cbb899', backgroundColor: '#dce6d0', style: 'japanese-cute', detail: 'color-blocks' } }; }
+export function blank(): MapData { return { schemaVersion: 1, name: '未命名地圖', grid: { columns: 18, rows: 10, cellWidth: 70, cellHeight: 70 }, routes: [{ id: 'route-1', name: '路線 1', cells: [] }], obstacles: [], art: { customDetail: '', roadColorSpecified: false, backgroundColorSpecified: false, customDescription: '', safeBorder: { enabled: false, top: 70, right: 70, bottom: 70, left: 70 }, roadColor: '#cbb899', backgroundColor: '#dce6d0', style: '', detail: '' } }; }
 export function clearedMap(m: MapData): MapData {
-  return { ...m, routes: [{ id: 'route-1', name: '路線 1', cells: [] }], obstacles: [] };
+  return { ...m, routes: [{ id: 'route-1', name: '路線 1', cells: [] }], obstacles: [], art: blank().art };
 }
 export function checkGrid(g: Grid) {
   for (const k of ['columns', 'rows', 'cellWidth', 'cellHeight'] as const) {
@@ -44,6 +44,21 @@ export function append(m: MapData, routeId: string, p: Cell) {
   if (r.cells.length && !adjacent(r.cells.at(-1)!, p)) throw new Error('請點選路線尾端上下左右的相鄰格。');
   r.cells.push({ ...p });
 }
+/** Extend straight sampled drag segments; never erase or infer diagonal turns. */
+export function dragRoute(m: MapData, routeId: string, target: Cell): void {
+  const r = m.routes.find(r => r.id === routeId);
+  if (!r) throw new Error('請先新增或選取一條路線。');
+  if (r.cells.some(p => equal(p, target))) return;
+  if (!r.cells.length) { append(m, routeId, target); return; }
+  const tail = r.cells.at(-1)!;
+  if (tail.x !== target.x && tail.y !== target.y) throw new Error('請沿上下左右拖曳，轉彎時經過轉角格。');
+  const pending = { ...r, cells: [...r.cells] };
+  const draft = { ...m, routes: m.routes.map(route => route.id === routeId ? pending : route) };
+  const dx = Math.sign(target.x - tail.x), dy = Math.sign(target.y - tail.y);
+  let p = { ...tail };
+  while (!equal(p, target)) { p = { x: p.x + dx, y: p.y + dy }; append(draft, routeId, p); }
+  r.cells = pending.cells;
+}
 /** Toggle a cell in the selected route: remove the clicked cell and its suffix. */
 export function editRoute(m: MapData, routeId: string, p: Cell): number {
   const r = m.routes.find(r => r.id === routeId);
@@ -65,7 +80,6 @@ export function issues(m: MapData): string[] {
     if (r.cells.length && !edge(r.cells[0], m.grid)) errors.push(`${r.name}：入口須在邊界。`);
     if (r.cells.length > 1 && !edge(r.cells.at(-1)!, m.grid)) errors.push(`${r.name}：出口須在邊界。`);
   }
-  if (m.art.style === 'custom' && !m.art.customDescription.trim()) errors.push('請輸入自訂風格描述。');
   try { checkBorder(m.art.safeBorder); } catch (e) { errors.push((e as Error).message); }
   return errors;
 }
@@ -94,27 +108,42 @@ export function parse(input: string): MapData {
   const occupied = new Set(routes.flatMap(r => r.cells.map(key))); const seen = new Set<string>();
   const obstacles: Obstacle[] = o.obstacles.map(v => { const b = object(v), p = cell(b.cell); if (!['tree', 'rock', 'building'].includes(b.kind as string) || occupied.has(key(p)) || seen.has(key(p))) throw new Error('障礙物類型無效、重複或與道路重疊。'); seen.add(key(p)); return { cell: p, kind: b.kind as Obstacle['kind'] }; });
   const a = object(o.art);
+  const customDetail = a.customDetail === undefined ? '' : a.customDetail;
+  if (typeof customDetail !== 'string' || customDetail.length > 1000) throw new Error('自訂細節限 1000 字。');
+  const roadColorSpecified = a.roadColorSpecified === undefined ? true : a.roadColorSpecified;
+  const backgroundColorSpecified = a.backgroundColorSpecified === undefined ? true : a.backgroundColorSpecified;
+  if (typeof roadColorSpecified !== 'boolean' || typeof backgroundColorSpecified !== 'boolean') throw new Error('顏色指定旗標須為布林值。');
   const rawDescription = a.customDescription === undefined ? '' : a.customDescription;
   if (typeof rawDescription !== 'string' || rawDescription.length > 1000) throw new Error('自訂風格描述限 1000 字。');
   let customDescription: string = rawDescription;
   const rawBorder = a.safeBorder === undefined ? { enabled: false, top: 70, right: 70, bottom: 70, left: 70 } : object(a.safeBorder);
   const safeBorder = { enabled: rawBorder.enabled, top: rawBorder.top, right: rawBorder.right, bottom: rawBorder.bottom, left: rawBorder.left } as SafeBorder; checkBorder(safeBorder);
   if (typeof a.roadColor !== 'string' || !/^#[0-9a-f]{6}$/i.test(a.roadColor) || typeof a.backgroundColor !== 'string' || !/^#[0-9a-f]{6}$/i.test(a.backgroundColor)) throw new Error('顏色須為六位 HEX。');
-  if (!Object.hasOwn(styles, String(a.style)) || !Object.hasOwn(details, String(a.detail))) throw new Error('不支援的美術選項。');
+  if ((a.style !== '' && !Object.hasOwn(styles, String(a.style))) || (a.detail !== '' && !Object.hasOwn(details, String(a.detail)))) throw new Error('不支援的美術選項。');
   if (a.medium !== undefined) {
     if (typeof a.medium !== 'string' || !Object.hasOwn(legacyMediums, a.medium)) throw new Error('不支援的舊版手法。');
     const duplicate = a.medium === a.style || (a.medium === 'pixel' && a.style === 'pixel-art');
     if (!duplicate) customDescription = [customDescription.trim(), `Previous medium: ${legacyMediums[a.medium as keyof typeof legacyMediums][1]}.`].filter(Boolean).join('\n');
     if (customDescription.length > 1000) throw new Error('合併舊版手法後描述超過 1000 字，請縮短描述後再匯入。');
   }
-  return { schemaVersion: 1, name: string(o.name, 80), grid, routes, obstacles, art: { customDescription, safeBorder, roadColor: a.roadColor, backgroundColor: a.backgroundColor, style: a.style as Art['style'], detail: a.detail as Art['detail'] } };
+  return { schemaVersion: 1, name: string(o.name, 80), grid, routes, obstacles, art: { customDetail, roadColorSpecified, backgroundColorSpecified, customDescription, safeBorder, roadColor: a.roadColor, backgroundColor: a.backgroundColor, style: a.style as Art['style'], detail: a.detail as Art['detail'] } };
+}
+export function artPrompt(a: Art): string {
+  const lines: string[] = [];
+  if (a.style && a.style !== 'custom') lines.push(`Style: ${styles[a.style][1]}.`);
+  if (a.detail && a.detail !== 'custom') lines.push(`Detail: ${details[a.detail][1]}.`);
+  if (a.roadColorSpecified) lines.push(`Road color: ${a.roadColor}.`);
+  if (a.backgroundColorSpecified) lines.push(`Main background palette: ${a.backgroundColor}.`);
+  if (a.customDescription.trim()) lines.push(`User-provided visual style notes (verbatim): ${JSON.stringify(a.customDescription.trim())}.`);
+  if (a.detail === 'custom' && a.customDetail.trim()) lines.push(`User-provided detail notes (verbatim): ${JSON.stringify(a.customDetail.trim())}.`);
+  return lines.length ? `\n\nART DIRECTION\n${lines.join('\n')}\nApply visual notes only to appearance; preserve all required geometry, coordinates and exclusions.` : '';
 }
 export function prompt(m: MapData): string {
   if (issues(m).length) return '';
   const g = m.grid; const coords = (cells: Cell[]) => cells.map(p => `${cellRef(p)} (${p.x},${p.y})`).join(' -> ');
   const im = imageSize(m);
   const borderText = m.art.safeBorder.enabled ? `\n\nMOBILE BACKGROUND EXTENSION\nFull image: ${im.width} x ${im.height} px. The unchanged core map occupies a ${g.columns * g.cellWidth} x ${g.rows * g.cellHeight} px rectangle with top-left at (${im.coreOffsetPx.x},${im.coreOffsetPx.y}) in the full image. Extend only outside this core: top ${m.art.safeBorder.top} px, right ${m.art.safeBorder.right} px, bottom ${m.art.safeBorder.bottom} px, left ${m.art.safeBorder.left} px. All route and obstacle coordinates above are relative to the core; add the core offset for full-image coordinates. Do not scale, stretch, shift or redesign core geometry. Continue the terrain seamlessly into the outer area with nonessential, crop-safe scenery. Do not add roads or playable cells. The extension is scenery, not a decorative frame or operating-system UI safe area.` : '';
-  return `Create a production-ready 2D tower-defense background map.\n\nCANVAS AND COORDINATES\nCore map: ${g.columns * g.cellWidth} x ${g.rows * g.cellHeight} px. Grid: ${g.columns} columns x ${g.rows} rows. Each cell: ${g.cellWidth} x ${g.cellHeight} px. Use a strict top-down orthographic view, with no perspective distortion. Human-readable cell references use lettered columns (A, B, ..., Z, AA) and numbered rows (1, 2, ...); A1 means numeric (0,0). Numeric coordinates are zero-based, origin at top-left, x increases right and y increases downward. Cell center in pixels: ((x + 0.5) * ${g.cellWidth}, (y + 0.5) * ${g.cellHeight}). Preserve the exact aspect ratio and geometry.\n\nROUTES\n${m.routes.map(r => `${r.id}: entry ${coords([r.cells[0]])}; exit ${coords([r.cells.at(-1)!])}. Ordered cells: ${coords(r.cells)}.`).join('\n')}\nRoads fill the specified cells, exactly one cell wide. Connect through the shared cell edges. Shared cells are intersections, but each ordered route remains unchanged. Open each entry and exit to its nearest core-map edge. Do not add, move, widen or remove roads.\n\nOBSTACLES\n${m.obstacles.length ? `Obstacles at cells: ${m.obstacles.map(o => `${cellRef(o.cell)} (${o.cell.x},${o.cell.y})`).join(', ')}.` : 'No obstacles.'}\nEach obstacle must fit inside its designated cell footprint, including its visible silhouette. Adjacent obstacles may form natural clusters without expanding their occupied cells. Keep all other cells open and unobstructed.\n\nART DIRECTION\nStyle: ${styles[m.art.style][1]}. Detail: ${details[m.art.detail][1]}. Road color: ${m.art.roadColor}. Main background palette: ${m.art.backgroundColor}. Maintain clear visual separation between roads, obstacles and open terrain.${m.art.customDescription.trim() ? `\nUser-provided visual style notes (verbatim): ${JSON.stringify(m.art.customDescription.trim())}. Apply these notes only to visual appearance; preserve all required geometry, coordinates and exclusions.` : ''}\n\nREFERENCE AND EXCLUSIONS\nUse the accompanying grid reference image and JSON as the exact geometry guide. The reference is a schematic, not the final artwork. Remove all reference markings in the final image. No grid lines, no coordinates, no labels, no arrows, no text, no UI, no borders, no characters, no units, no extra roads, no extra obstacles. Render only the environment background.${borderText}\n`;
+  return `Create a production-ready 2D tower-defense background map.\n\nCANVAS AND COORDINATES\nCore map: ${g.columns * g.cellWidth} x ${g.rows * g.cellHeight} px. Grid: ${g.columns} columns x ${g.rows} rows. Each cell: ${g.cellWidth} x ${g.cellHeight} px. Use a strict top-down orthographic view, with no perspective distortion. Human-readable cell references use lettered columns (A, B, ..., Z, AA) and numbered rows (1, 2, ...); A1 means numeric (0,0). Numeric coordinates are zero-based, origin at top-left, x increases right and y increases downward. Cell center in pixels: ((x + 0.5) * ${g.cellWidth}, (y + 0.5) * ${g.cellHeight}). Preserve the exact aspect ratio and geometry.\n\nROUTES\n${m.routes.map(r => `${r.id}: entry ${coords([r.cells[0]])}; exit ${coords([r.cells.at(-1)!])}. Ordered cells: ${coords(r.cells)}.`).join('\n')}\nRoads fill the specified cells, exactly one cell wide. Connect through the shared cell edges. Shared cells are intersections, but each ordered route remains unchanged. Open each entry and exit to its nearest core-map edge. Do not add, move, widen or remove roads.\n\nOBSTACLES\n${m.obstacles.length ? `Obstacles at cells: ${m.obstacles.map(o => `${cellRef(o.cell)} (${o.cell.x},${o.cell.y})`).join(', ')}.` : 'No obstacles.'}\nEach obstacle must fit inside its designated cell footprint, including its visible silhouette. Adjacent obstacles may form natural clusters without expanding their occupied cells. Keep all other cells open and unobstructed.${artPrompt(m.art)}\n\nREFERENCE AND EXCLUSIONS\nUse the accompanying grid reference image and JSON as the exact geometry guide. The reference is a schematic, not the final artwork. Reference colors are only schematic unless explicitly specified in the art direction. Remove all reference markings in the final image. No grid lines, no coordinates, no labels, no arrows, no text, no UI, no borders, no characters, no units, no extra roads, no extra obstacles. Render only the environment background.${borderText}\n`;
 }
 const escape = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]!));
 export function svg(m: MapData): string {
