@@ -1,5 +1,6 @@
 export type Cell = { x: number; y: number };
 export type Grid = { columns: number; rows: number; cellWidth: number; cellHeight: number };
+export const MAX_ROUTE_STEPS = 8192;
 export type Route = { id: string; name: string; cells: Cell[] };
 export type Obstacle = { cell: Cell; kind: 'tree' | 'rock' | 'building' };
 export const styles = { 'japanese-cute': ['日系可愛', 'cute Japanese illustration'], fantasy: ['奇幻童話', 'whimsical fantasy'], natural: ['自然寫實', 'naturalistic environment'], minimal: ['極簡', 'minimalist'], 'american-comic': ['美式漫畫', 'American comic book with bold outlines and graphic shading'], 'hand-drawn': ['手繪', 'hand-drawn illustration with organic strokes'], ink: ['油墨', 'ink illustration with expressive ink textures'], 'pixel-art': ['像素', 'pixel art with crisp pixel edges'], storybook: ['童書繪本', 'storybook illustration'], 'retro-cartoon': ['復古卡通', 'retro cartoon illustration'], papercut: ['剪紙拼貼', 'layered paper-cut collage'], 'line-art': ['線稿', 'clean line-art illustration'], watercolor: ['水彩', 'watercolor illustration'], gouache: ['水粉', 'gouache illustration'], digital: ['數位繪畫', 'digital painting'], pencil: ['鉛筆素描', 'pencil drawing'], 'colored-pencil': ['色鉛筆', 'colored pencil illustration'], oil: ['油畫', 'oil painting'], marker: ['麥克筆', 'marker drawing'], print: ['版畫', 'printmaking'], custom: ['自訂風格', 'custom visual style described in the user notes below'] };
@@ -39,7 +40,7 @@ export function append(m: MapData, routeId: string, p: Cell) {
   if (!r) throw new Error('請先新增或選取一條路線。');
   if (!inside(p, m.grid)) throw new Error('座標超出地圖。');
   if (m.obstacles.some(o => equal(o.cell, p))) throw new Error('這格有障礙物，請先擦除。');
-  if (r.cells.some(c => equal(c, p))) throw new Error('同一路線不可重複經過同一格，請使用「退回一格」。');
+  if (r.cells.length >= MAX_ROUTE_STEPS) throw new Error(`每條路線最多 ${MAX_ROUTE_STEPS} 步。`);
   if (!r.cells.length && !edge(p, m.grid)) throw new Error('請從地圖邊界選擇入口。');
   if (r.cells.length && !adjacent(r.cells.at(-1)!, p)) throw new Error('請點選路線尾端上下左右的相鄰格。');
   r.cells.push({ ...p });
@@ -48,7 +49,7 @@ export function append(m: MapData, routeId: string, p: Cell) {
 export function dragRoute(m: MapData, routeId: string, target: Cell): void {
   const r = m.routes.find(r => r.id === routeId);
   if (!r) throw new Error('請先新增或選取一條路線。');
-  if (r.cells.some(p => equal(p, target))) return;
+  if (r.cells.length && equal(r.cells.at(-1)!, target)) return;
   if (!r.cells.length) { append(m, routeId, target); return; }
   const tail = r.cells.at(-1)!;
   if (tail.x !== target.x && tail.y !== target.y) throw new Error('請沿上下左右拖曳，轉彎時經過轉角格。');
@@ -59,11 +60,11 @@ export function dragRoute(m: MapData, routeId: string, target: Cell): void {
   while (!equal(p, target)) { p = { x: p.x + dx, y: p.y + dy }; append(draft, routeId, p); }
   r.cells = pending.cells;
 }
-/** Toggle a cell in the selected route: remove the clicked cell and its suffix. */
-export function editRoute(m: MapData, routeId: string, p: Cell): number {
+/** Toggle a cell in the selected route: remove its last visit and suffix, or explicitly extend through it. */
+export function editRoute(m: MapData, routeId: string, p: Cell, extend = false): number {
   const r = m.routes.find(r => r.id === routeId);
-  const index = r?.cells.findIndex(c => equal(c, p)) ?? -1;
-  if (r && index >= 0) return r.cells.splice(index).length;
+  const index = r ? r.cells.map(key).lastIndexOf(key(p)) : -1;
+  if (!extend && r && index >= 0) return r.cells.splice(index).length;
   append(m, routeId, p);
   return 0;
 }
@@ -93,7 +94,7 @@ export function imageSize(m: MapData) {
 export function exported(m: MapData) {
   const roads = new Map<string, Cell>(); const shared = new Map<string, string[]>();
   m.routes.forEach(r => r.cells.forEach(p => { roads.set(key(p), p); shared.set(key(p), [...(shared.get(key(p)) || []), r.id]); }));
-  return { ...m, imagePx: imageSize(m), status: issues(m).length ? 'draft' : 'ready', canvasPx: { width: m.grid.columns * m.grid.cellWidth, height: m.grid.rows * m.grid.cellHeight }, coordinateSystem: { origin: 'top-left', indexBase: 0, unit: 'px', referenceNotation: 'Columns A, B, ..., Z, AA; rows 1, 2, ...; A1 = (0,0)' }, routes: m.routes.map(r => ({ ...r, entry: r.cells[0] || null, exit: r.cells.at(-1) || null, centerlinePx: r.cells.map(p => center(p, m.grid)) })), roadCells: [...roads.values()], junctions: [...shared].filter(([, ids]) => ids.length > 1).map(([k, routeIds]) => ({ cell: roads.get(k)!, routeIds })), obstacles: m.obstacles.map(o => ({ ...o, rectPx: { x: o.cell.x * m.grid.cellWidth, y: o.cell.y * m.grid.cellHeight, width: m.grid.cellWidth, height: m.grid.cellHeight } })) };
+  return { ...m, imagePx: imageSize(m), status: issues(m).length ? 'draft' : 'ready', canvasPx: { width: m.grid.columns * m.grid.cellWidth, height: m.grid.rows * m.grid.cellHeight }, coordinateSystem: { origin: 'top-left', indexBase: 0, unit: 'px', referenceNotation: 'Columns A, B, ..., Z, AA; rows 1, 2, ...; A1 = (0,0)' }, routes: m.routes.map(r => ({ ...r, entry: r.cells[0] || null, exit: r.cells.at(-1) || null, centerlinePx: r.cells.map(p => center(p, m.grid)) })), roadCells: [...roads.values()], junctions: [...shared].filter(([, ids]) => ids.length > 1).map(([k, routeIds]) => ({ cell: roads.get(k)!, routeIds: [...new Set(routeIds)] })), obstacles: m.obstacles.map(o => ({ ...o, rectPx: { x: o.cell.x * m.grid.cellWidth, y: o.cell.y * m.grid.cellHeight, width: m.grid.cellWidth, height: m.grid.cellHeight } })) };
 }
 function object(v: unknown): Record<string, unknown> { if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('JSON 物件格式錯誤。'); return v as Record<string, unknown>; }
 function string(v: unknown, max: number): string { if (typeof v !== 'string' || !v.trim() || v.length > max) throw new Error(`名稱或文字欄位必須為 1–${max} 字元。`); return v; }
@@ -104,7 +105,7 @@ export function parse(input: string): MapData {
   function cell(v: unknown): Cell { const c = object(v); if (!Number.isInteger(c.x) || !Number.isInteger(c.y) || !inside(c as Cell, grid)) throw new Error('格子座標須為範圍內的整數。'); return { x: c.x as number, y: c.y as number }; }
   if (!Array.isArray(o.routes) || o.routes.length > 16 || !Array.isArray(o.obstacles) || o.obstacles.length > grid.columns * grid.rows) throw new Error('路線或障礙物數量無效。');
   const ids = new Set<string>();
-  const routes: Route[] = o.routes.map(v => { const r = object(v); const id = string(r.id, 64); if (!/^route-[a-zA-Z0-9-]+$/.test(id) || ids.has(id)) throw new Error('路線 ID 無效或重複。'); ids.add(id); if (!Array.isArray(r.cells) || r.cells.length > grid.columns * grid.rows) throw new Error('路線 cells 格式無效。'); const cells = r.cells.map(cell); if (new Set(cells.map(key)).size !== cells.length || cells.some((p, i) => i > 0 && !adjacent(cells[i - 1], p))) throw new Error('路線不可跳格、斜向或重複格子。'); return { id, name: string(r.name, 60), cells }; });
+  const routes: Route[] = o.routes.map(v => { const r = object(v); const id = string(r.id, 64); if (!/^route-[a-zA-Z0-9-]+$/.test(id) || ids.has(id)) throw new Error('路線 ID 無效或重複。'); ids.add(id); if (!Array.isArray(r.cells) || r.cells.length > MAX_ROUTE_STEPS) throw new Error('路線 cells 格式無效。'); const cells = r.cells.map(cell); if (cells.some((p, i) => i > 0 && !adjacent(cells[i - 1], p))) throw new Error('路線不可跳格、斜向或連續停在同一格。'); return { id, name: string(r.name, 60), cells }; });
   const occupied = new Set(routes.flatMap(r => r.cells.map(key))); const seen = new Set<string>();
   const obstacles: Obstacle[] = o.obstacles.map(v => { const b = object(v), p = cell(b.cell); if (!['tree', 'rock', 'building'].includes(b.kind as string) || occupied.has(key(p)) || seen.has(key(p))) throw new Error('障礙物類型無效、重複或與道路重疊。'); seen.add(key(p)); return { cell: p, kind: b.kind as Obstacle['kind'] }; });
   const a = object(o.art);
@@ -143,7 +144,7 @@ export function prompt(m: MapData): string {
   const g = m.grid; const coords = (cells: Cell[]) => cells.map(p => `${cellRef(p)} (${p.x},${p.y})`).join(' -> ');
   const im = imageSize(m);
   const borderText = m.art.safeBorder.enabled ? `\n\nMOBILE BACKGROUND EXTENSION\nFull image: ${im.width} x ${im.height} px. The unchanged core map occupies a ${g.columns * g.cellWidth} x ${g.rows * g.cellHeight} px rectangle with top-left at (${im.coreOffsetPx.x},${im.coreOffsetPx.y}) in the full image. Extend only outside this core: top ${m.art.safeBorder.top} px, right ${m.art.safeBorder.right} px, bottom ${m.art.safeBorder.bottom} px, left ${m.art.safeBorder.left} px. All route and obstacle coordinates above are relative to the core; add the core offset for full-image coordinates. Do not scale, stretch, shift or redesign core geometry. Continue the terrain seamlessly into the outer area with nonessential, crop-safe scenery. Do not add roads or playable cells. The extension is scenery, not a decorative frame or operating-system UI safe area.` : '';
-  return `Create a production-ready 2D tower-defense background map.\n\nCANVAS AND COORDINATES\nCore map: ${g.columns * g.cellWidth} x ${g.rows * g.cellHeight} px. Grid: ${g.columns} columns x ${g.rows} rows. Each cell: ${g.cellWidth} x ${g.cellHeight} px. Use a strict top-down orthographic view, with no perspective distortion. Human-readable cell references use lettered columns (A, B, ..., Z, AA) and numbered rows (1, 2, ...); A1 means numeric (0,0). Numeric coordinates are zero-based, origin at top-left, x increases right and y increases downward. Cell center in pixels: ((x + 0.5) * ${g.cellWidth}, (y + 0.5) * ${g.cellHeight}). Preserve the exact aspect ratio and geometry.\n\nROUTES\n${m.routes.map(r => `${r.id}: entry ${coords([r.cells[0]])}; exit ${coords([r.cells.at(-1)!])}. Ordered cells: ${coords(r.cells)}.`).join('\n')}\nRoads fill the specified cells, exactly one cell wide. Connect through the shared cell edges. Shared cells are intersections, but each ordered route remains unchanged. Open each entry and exit to its nearest core-map edge. Do not add, move, widen or remove roads.\n\nOBSTACLES\n${m.obstacles.length ? `Obstacles at cells: ${m.obstacles.map(o => `${cellRef(o.cell)} (${o.cell.x},${o.cell.y})`).join(', ')}.` : 'No obstacles.'}\nEach obstacle must fit inside its designated cell footprint, including its visible silhouette. Adjacent obstacles may form natural clusters without expanding their occupied cells. Keep all other cells open and unobstructed.${artPrompt(m.art)}\n\nREFERENCE AND EXCLUSIONS\nUse the accompanying grid reference image and JSON as the exact geometry guide. The reference is a schematic, not the final artwork. Reference colors are only schematic unless explicitly specified in the art direction. Remove all reference markings in the final image. No grid lines, no coordinates, no labels, no arrows, no text, no UI, no borders, no characters, no units, no extra roads, no extra obstacles. Render only the environment background.${borderText}\n`;
+  return `Create a production-ready 2D tower-defense background map.\n\nCANVAS AND COORDINATES\nCore map: ${g.columns * g.cellWidth} x ${g.rows * g.cellHeight} px. Grid: ${g.columns} columns x ${g.rows} rows. Each cell: ${g.cellWidth} x ${g.cellHeight} px. Use a strict top-down orthographic view, with no perspective distortion. Human-readable cell references use lettered columns (A, B, ..., Z, AA) and numbered rows (1, 2, ...); A1 means numeric (0,0). Numeric coordinates are zero-based, origin at top-left, x increases right and y increases downward. Cell center in pixels: ((x + 0.5) * ${g.cellWidth}, (y + 0.5) * ${g.cellHeight}). Preserve the exact aspect ratio and geometry.\n\nROUTES\n${m.routes.map(r => `${r.id}: entry ${coords([r.cells[0]])}; exit ${coords([r.cells.at(-1)!])}. Ordered cells: ${coords(r.cells)}.`).join('\n')}\nRoads fill the specified cells, exactly one cell wide. Connect through the shared cell edges. Shared cells, including repeated visits by the same route, are intersections. Preserve every visit in the ordered route; do not deduplicate its sequence or create bridges or overpasses. Open each entry and exit to its nearest core-map edge. Do not add, move, widen or remove roads.\n\nOBSTACLES\n${m.obstacles.length ? `Obstacles at cells: ${m.obstacles.map(o => `${cellRef(o.cell)} (${o.cell.x},${o.cell.y})`).join(', ')}.` : 'No obstacles.'}\nEach obstacle must fit inside its designated cell footprint, including its visible silhouette. Adjacent obstacles may form natural clusters without expanding their occupied cells. Keep all other cells open and unobstructed.${artPrompt(m.art)}\n\nREFERENCE AND EXCLUSIONS\nUse the accompanying grid reference image and JSON as the exact geometry guide. The reference is a schematic, not the final artwork. Reference colors are only schematic unless explicitly specified in the art direction. Remove all reference markings in the final image. No grid lines, no coordinates, no labels, no arrows, no text, no UI, no borders, no characters, no units, no extra roads, no extra obstacles. Render only the environment background.${borderText}\n`;
 }
 const escape = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]!));
 export function svg(m: MapData): string {

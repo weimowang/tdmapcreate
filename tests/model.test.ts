@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dragRoute, clearedMap, editRoute, append, blank, cellRef, columnLabel, center, exported, imageSize, issues, parse, place, prompt, resized, svg } from '../src/model.ts';
+import { MAX_ROUTE_STEPS, dragRoute, clearedMap, editRoute, append, blank, cellRef, columnLabel, center, exported, imageSize, issues, parse, place, prompt, resized, svg } from '../src/model.ts';
 function ready() { const m = blank(); m.grid = { columns: 3, rows: 3, cellWidth: 40, cellHeight: 80 }; append(m,'route-1',{x:0,y:1}); append(m,'route-1',{x:1,y:1}); append(m,'route-1',{x:2,y:1}); return m; }
 test('default dimensions and draft',()=>{const m=blank();assert.deepEqual(exported(m).canvasPx,{width:1260,height:700});assert.equal(exported(m).status,'draft');assert.equal(prompt(m),'');assert.equal(m.art.safeBorder.enabled,false);});
 test('rectangular cells, path centers and endpoint order',()=>{const m=ready();assert.deepEqual(center({x:1,y:1},m.grid),{x:60,y:120});assert.deepEqual(exported(m).routes[0].exit,{x:2,y:1});m.routes[0].cells.reverse();assert.deepEqual(exported(m).routes[0].entry,{x:2,y:1});m.routes[0].cells.pop();assert.ok(issues(m).length);});
@@ -26,8 +26,42 @@ test('unified art style produces no separate medium and preserves legacy drafts 
 
 test('clear map empties all geometry and resets art while preserving name and dimensions',()=>{const m=ready();m.name='Keep this name';place(m,{x:0,y:0},'rock');m.art.style='oil';m.art.safeBorder.enabled=true;const original=JSON.stringify(m);const cleared=clearedMap(m);assert.equal(JSON.stringify(m),original);assert.deepEqual(cleared.grid,m.grid);assert.deepEqual(cleared.art,blank().art);assert.equal(cleared.name,m.name);assert.deepEqual(cleared.obstacles,[]);assert.deepEqual(cleared.routes,[{id:'route-1',name:'路線 1',cells:[]}]);assert.equal(exported(cleared).status,'draft');assert.equal(prompt(cleared),'');});
 
-test('mouse drag fills straight gaps, permits turns and never erases existing cells',()=>{const m=blank();dragRoute(m,'route-1',{x:0,y:2});dragRoute(m,'route-1',{x:4,y:2});assert.equal(m.routes[0].cells.length,5);dragRoute(m,'route-1',{x:4,y:0});assert.equal(m.routes[0].cells.length,7);const before=JSON.stringify(m);dragRoute(m,'route-1',{x:2,y:2});assert.equal(JSON.stringify(m),before);assert.throws(()=>dragRoute(m,'route-1',{x:6,y:1}));assert.equal(JSON.stringify(m),before);});
+test('mouse drag fills straight gaps, permits turns and never erases existing cells',()=>{const m=blank();dragRoute(m,'route-1',{x:0,y:2});dragRoute(m,'route-1',{x:4,y:2});assert.equal(m.routes[0].cells.length,5);dragRoute(m,'route-1',{x:4,y:0});assert.equal(m.routes[0].cells.length,7);const before=JSON.stringify(m);dragRoute(m,'route-1',{x:4,y:0});assert.equal(JSON.stringify(m),before);assert.throws(()=>dragRoute(m,'route-1',{x:6,y:1}));assert.equal(JSON.stringify(m),before);});
 test('drag cannot skip over obstacles or mutate another route',()=>{const m=blank();m.routes.push({id:'route-2',name:'Other',cells:[]});dragRoute(m,'route-1',{x:0,y:2});place(m,{x:2,y:2},'rock');const before=JSON.stringify(m);assert.throws(()=>dragRoute(m,'route-1',{x:4,y:2}));assert.equal(JSON.stringify(m),before);assert.throws(()=>dragRoute(m,'route-2',{x:2,y:3}));assert.deepEqual(m.routes[1].cells,[]);});
 
 test('optional art allows geometry-only, partial and custom-detail prompts',()=>{const m=ready();assert.equal(issues(m).length,0);assert.match(prompt(m),/ROUTES/);assert.doesNotMatch(prompt(m),/ART DIRECTION|Road color:|Main background palette:/);m.art.style='custom';m.art.detail='custom';assert.doesNotMatch(prompt(m),/ART DIRECTION/);m.art.customDetail='Sparse grass, 無碎石';assert.match(prompt(m),/Sparse grass, 無碎石/);assert.doesNotMatch(prompt(m),/Road color:/);m.art.roadColorSpecified=true;assert.match(prompt(m),/Road color: #cbb899/);assert.deepEqual(parse(JSON.stringify(m)),m);m.art.detail='';assert.doesNotMatch(prompt(m),/Sparse grass/);});
 test('legacy art restores explicit color choices and rejects invalid optional fields',()=>{const m=ready();const a:any={...m.art,style:'oil'};delete a.roadColorSpecified;delete a.backgroundColorSpecified;delete a.customDetail;const restored=parse(JSON.stringify({...m,art:a}));assert.equal(restored.art.roadColorSpecified,true);assert.match(prompt(restored),/Style: oil painting/);assert.throws(()=>parse(JSON.stringify({...m,art:{...m.art,roadColorSpecified:'yes'}})));assert.throws(()=>parse(JSON.stringify({...m,art:{...m.art,customDetail:'x'.repeat(1001)}})));});
+
+function crossed() {
+  const m=blank();
+  for(const [x,y] of [[0,3],[4,3],[4,1],[2,1],[2,5],[6,5],[6,3],[4,3],[4,0]]) dragRoute(m,'route-1',{x,y});
+  return m;
+}
+test('self-crossing preserves ordered visits, unique road footprint and junction IDs',()=>{
+  const m=crossed(), e=exported(m), cells=m.routes[0].cells;
+  assert.ok(cells.filter(p=>p.x===2&&p.y===3).length===2);
+  assert.ok(e.roadCells.length<cells.length);
+  assert.deepEqual(e.junctions.find(j=>j.cell.x===2&&j.cell.y===3)?.routeIds,['route-1']);
+  assert.deepEqual(parse(JSON.stringify(e)),m);
+  assert.equal(e.routes[0].centerlinePx.length,cells.length);
+  assert.match(prompt(m),/Preserve every visit/);
+  m.routes[0].cells.reverse();assert.deepEqual(parse(JSON.stringify(exported(m))),m);
+});
+test('crossing click mode appends while default click removes only the last visit and suffix',()=>{
+  const m=ready();editRoute(m,'route-1',{x:1,y:1},true);
+  assert.equal(m.routes[0].cells.length,4);
+  assert.equal(editRoute(m,'route-1',{x:1,y:1}),1);
+  assert.deepEqual(m.routes[0].cells,ready().routes[0].cells);
+  const c=crossed(), before=[...c.routes[0].cells], p={x:2,y:3};
+  const last=before.map(v=>`${v.x},${v.y}`).lastIndexOf('2,3');
+  editRoute(c,'route-1',p);assert.deepEqual(c.routes[0].cells,before.slice(0,last));
+  assert.ok(c.routes[0].cells.some(v=>v.x===2&&v.y===3));
+});
+test('routes can exceed grid area but reject stationary duplicates and step overflow',()=>{
+  const m=ready();for(let i=0;i<10;i++) append(m,'route-1',{x:i%2===0?1:2,y:1});
+  assert.ok(m.routes[0].cells.length>9);assert.deepEqual(parse(JSON.stringify(m)),m);
+  assert.throws(()=>append(m,'route-1',m.routes[0].cells.at(-1)!));
+  m.routes[0].cells=Array.from({length:MAX_ROUTE_STEPS},(_,i)=>({x:i%2,y:1}));
+  const before=JSON.stringify(m);assert.throws(()=>dragRoute(m,'route-1',{x:2,y:1}));assert.equal(JSON.stringify(m),before);
+  m.routes[0].cells.push({x:0,y:1});assert.throws(()=>parse(JSON.stringify(m)));
+});
