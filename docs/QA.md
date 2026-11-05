@@ -4,7 +4,7 @@
 
 ## 已通過
 
-- `npm test`：12 項 Node 測試通過；覆蓋預設尺寸、非正方格、路線順序、共享路口、非法繪製、道路障礙衝突、尺寸裁切保護、JSON 往返、損壞／超大／非法輸入、英文 Prompt、安全外圍及 SVG 文字轉義。
+- `npm test`：15 項 Node 測試通過；覆蓋預設尺寸、非正方格、路線順序、共享路口、非法繪製、道路障礙衝突、尺寸裁切保護、JSON 往返、損壞／超大／非法輸入、英文 Prompt、安全外圍及 SVG 文字轉義。
 - `npm run build`：TypeScript 檢查與 Vite production build 通過。
 - 瀏覽器實際繪製八格路線、放置樹木、拒絕在道路放障礙、切換安全外圍與修改左側延伸。
 - 英文 Prompt 複製顯示成功；未觀察到瀏覽器 console error。
@@ -27,3 +27,12 @@
 - [最終預覽](qa/preview.jpg)
 
 測試地圖僅存在測試瀏覽器草稿，首次開啟網站仍為空白地圖。
+
+## 使用者回饋修正驗收
+
+- 畫布 grid 欄列使用 `minmax(0, 1fr)` 固定分配，障礙符號統一「障」。瀏覽器量測放置前／後皆為寬 29.890625、高 29.796875 CSS px，沒有文字撐高列的現象。
+- 英文 Prompt 障礙統稱 obstacles，不帶 tree／rock／building 類型。
+- 字母欄／數字列顯示，A1 對應 (0,0)；超過 Z 正確使用 AA 至 BL。
+- 自訂風格描述「Soft ink texture, pale colors, 手繪線條」實測原文帶入 Prompt；數值與障礙描述仍由資料產生。
+- [新版畫面](qa/latest.jpg)。
+- 第一版 GitHub Pages 已成功部署，正式網址 HTTP 200；後續版本依 Actions 狀態判定。

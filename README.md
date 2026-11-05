@@ -7,7 +7,8 @@
 - 自訂欄列（預設 18×10）及每格寬高（預設 70×70 px）。
 - 多路線逐格編輯、出入口、反轉、退回與共享路口。
 - 樹木／岩石／建物障礙，避免和道路重疊。
-- 道路與背景配色、風格／手法／細節選單。
+- 道路與背景配色、多種風格／手法／細節選單及原文自訂風格描述。
+- 字母欄／數字列座標（A1＝數值 0,0）；障礙統一顯示「障」。
 - 選配手機安全外圍：預設關閉，四側可各自設定 px，不改核心地圖。
 - JSON 匯出／匯入、本機草稿保存、英文 Prompt 一鍵複製／TXT 下載。
 - SVG 與 PNG 格線參考圖下載。PNG 限 1,600 萬像素、單邊 8192 px；更大尺寸可用 SVG。
@@ -32,7 +33,7 @@ npm run build
 
 Repository 的 **Settings → Pages → Source** 選擇 **GitHub Actions**。推送 `main` 後，`.github/workflows/pages.yml` 會安裝依賴、測試、建置並發布 `dist`。Vite 的 base 已設定為 `/tdmapcreate/`。
 
-預期網站位置：`https://weimowang.github.io/tdmapcreate/`。是否已上線以實際部署結果為準。
+網站：[https://weimowang.github.io/tdmapcreate/](https://weimowang.github.io/tdmapcreate/)。首次 GitHub Pages 部署與正式頁面載入已驗證成功。
 
 ## 使用方式
 
